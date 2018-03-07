@@ -248,13 +248,27 @@ class WizardComponent extends Component {
 				$this->_setCurrentStep($step);
 												
 				if (!empty($this->controller->data) && !isset($this->controller->request->data['Previous'])) { 
-					$proceed = false;
+					$proceed = null;
+
+					// first we fire our event
+					$event = new CakeEvent('Component.Wizard.processStep', $this->controller, [
+						'step' => $this->_currentStep,
+					]);
+					$this->controller->getEventManager()->dispatch($event);
+
+					if ($event->isStopped()) {
+						$proceed = false;
+					} elseif (isset($event->result['proceed'])) {
+						$proceed = $event->result['proceed'];
+					}
 					
 					$processCallback = '_' . Inflector::variable('process_' . $this->_currentStep);
 					if (method_exists($this->controller, $processCallback)) {
 						$proceed = $this->controller->$processCallback();
 					} elseif ($this->autoValidate) {
 						$proceed = $this->_validateData();
+					} elseif ($proceed!==null) {
+						// we had an event validate the step so we do not throw ex
 					} else {
 						throw new NotImplementedException(sprintf(__('Process Callback not found. Please create Controller::%s', $processCallback)));
 					}
