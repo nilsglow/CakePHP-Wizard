@@ -213,6 +213,8 @@ class WizardComponent extends Component {
  */		
 	public function process($step) { 
 		if (isset($this->controller->request->data['Cancel'])) {
+			$this->_dispatchEvent('beforeCancel');
+
 			if (method_exists($this->controller, '_beforeCancel')) {
 				$this->controller->_beforeCancel($this->_getExpectedStep());
 			}
@@ -220,6 +222,8 @@ class WizardComponent extends Component {
 			$this->controller->redirect($this->cancelUrl);
 		}
 		if (isset($this->controller->request->data['Draft'])) {
+			// TODO here we should also dispatch an event
+
 			if (method_exists($this->controller, '_saveDraft')) {
 				$draft = array('_draft' => array('current' => array('step' => $step, 'data' => $this->controller->data)));	
 				$this->controller->_saveDraft(array_merge_recursive((array)$this->read(), $draft));
@@ -231,6 +235,8 @@ class WizardComponent extends Component {
 		
 		if (empty($step)) {
 			if ($this->controller->Session->check('Wizard.complete')) { 
+				$this->_dispatchEvent('afterComplete');
+
 				if (method_exists($this->controller, '_afterComplete')) {
 					$this->controller->_afterComplete();
 				}
@@ -251,16 +257,7 @@ class WizardComponent extends Component {
 					$proceed = null;
 
 					// first we fire our event
-					$event = new CakeEvent('Component.Wizard.processStep', $this->controller, [
-						'step' => $this->_currentStep,
-					]);
-					$this->controller->getEventManager()->dispatch($event);
-
-					if ($event->isStopped()) {
-						$proceed = false;
-					} elseif (isset($event->result['proceed'])) {
-						$proceed = $event->result['proceed'];
-					}
+					$proceed = $this->_dispatchEvent('processStep');
 					
 					$processCallback = '_' . Inflector::variable('process_' . $this->_currentStep);
 					if (method_exists($this->controller, $processCallback)) {
@@ -296,6 +293,8 @@ class WizardComponent extends Component {
 					$this->controller->data = $this->read($this->_currentStep);
 				}
 			
+				$this->_dispatchEvent('prepareStep');
+
 				$prepareCallback = '_' . Inflector::variable('prepare_' . $this->_currentStep);
 				if (method_exists($this->controller, $prepareCallback)) {
 					$this->controller->$prepareCallback();
@@ -595,6 +594,28 @@ class WizardComponent extends Component {
 		return false;
 	}
         
+/**
+ * Fires event 'Component.Wizard.$name' via controller's event manager.
+ *
+ * @param string $name event name, will be prefixed with 'Component.Wizard.'
+ * @return boolean|null false or true depending what event handler says, or
+ * null if event result has no key proceed.
+ * @access protected
+ */
+	protected function _dispatchEvent($name){
+		$event = new CakeEvent('Component.Wizard.'.$name, $this->controller, [
+			'step' => $this->_currentStep,
+		]);
+		$this->controller->getEventManager()->dispatch($event);
+
+		if ($event->isStopped()) {
+			return false;
+		} elseif (isset($event->result['proceed'])) {
+			return $event->result['proceed'];
+		}
+
+		return null;
+	}
 
 }
 ?>
